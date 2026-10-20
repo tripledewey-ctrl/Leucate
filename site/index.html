@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kitespots Leucate</title>
+  <meta name="description" content="Kitespots in Leucate mit aktuellem Wind und Windrichtung (Open-Meteo).">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --card: #ffffff;
+      --text: #1b1f24;
+      --muted: #5b6573;
+      --border: #dde2e8;
+      --good: #1a7f37;
+      --ok: #9a6700;
+      --bad: #cf222e;
+      --weak: #6e7781;
+      --accent: #0969da;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0d1117;
+        --card: #161b22;
+        --text: #e6edf3;
+        --muted: #9198a1;
+        --border: #30363d;
+        --good: #3fb950;
+        --ok: #d29922;
+        --bad: #f85149;
+        --weak: #8b949e;
+        --accent: #4493f8;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #0d1117;
+      --card: #161b22;
+      --text: #e6edf3;
+      --muted: #9198a1;
+      --border: #30363d;
+      --good: #3fb950;
+      --ok: #d29922;
+      --bad: #f85149;
+      --weak: #8b949e;
+      --accent: #4493f8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    header, main, footer { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+    header { padding-top: 20px; }
+    h1 { font-size: 1.5rem; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 16px; }
+    #map {
+      height: 420px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; color: var(--muted); }
+    button {
+      font: inherit;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .spot {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+    }
+    .spot.active { outline: 2px solid var(--accent); }
+    .spot h3 { margin: 0 0 2px; font-size: 1rem; }
+    .spot .type { color: var(--muted); font-size: .85rem; }
+    .wind { display: flex; align-items: center; gap: 12px; margin: 10px 0 6px; }
+    .wind .kn { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .wind .meta { color: var(--muted); font-size: .85rem; }
+    .arrow { width: 40px; height: 40px; flex: none; }
+    .arrow path { fill: var(--accent); }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .8rem; font-weight: 600; color: #fff; }
+    .b-good { background: var(--good); }
+    .b-ok { background: var(--ok); }
+    .b-bad { background: var(--bad); }
+    .b-weak { background: var(--weak); }
+    h2 { font-size: 1.15rem; margin: 20px 0 8px; }
+    .table-wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; font-variant-numeric: tabular-nums; }
+    th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 600; font-size: .85rem; }
+    td .arrow { width: 20px; height: 20px; vertical-align: middle; }
+    footer { color: var(--muted); font-size: .85rem; padding-bottom: 24px; }
+    a { color: var(--accent); }
+    @media (max-width: 600px) { #map { height: 300px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Kitespots Leucate</h1>
+    <p class="sub">Aktueller Wind (Knoten) und Windrichtung je Spot, Vorhersage für die nächsten Stunden.</p>
+  </header>
+  <main>
+    <section id="map" aria-label="Karte der Kitespots"></section>
+    <div class="bar">
+      <button type="button" id="reload">Aktualisieren</button>
+      <span id="status">Lade Wetterdaten …</span>
+    </div>
+    <div class="grid" id="spots"></div>
+    <h2 id="fc-title">Vorhersage</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Zeit</th><th>Wind</th><th>Böen</th><th>Richtung</th><th>Bewertung</th></tr>
+        </thead>
+        <tbody id="forecast"></tbody>
+      </table>
+    </div>
+  </main>
+  <footer>
+    <p>
+      Wetterdaten: <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0, kostenlos für nicht-kommerzielle Nutzung) ·
+      Karte: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende.
+      Koordinaten und Bewertung sind Näherungen – vor Ort immer selbst prüfen.
+    </p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+    // offshore: Windrichtungen (woher, in Grad), die ablandig sind. good: ideale Richtungen.
+    const SPOTS = [
+      { name: "Les Coussoules (La Franqui)", type: "Meer", lat: 42.9560, lon: 3.0420, good: [[20, 160]], offshore: [[225, 345]] },
+      { name: "La Franqui – Plage", type: "Meer", lat: 42.9370, lon: 3.0340, good: [[30, 160]], offshore: [[225, 345]] },
+      { name: "Leucate Plage / Le Mouret", type: "Meer", lat: 42.9050, lon: 3.0560, good: [[45, 150]], offshore: [[220, 340]] },
+      { name: "Port Leucate – Grande Plage", type: "Meer", lat: 42.8700, lon: 3.0470, good: [[30, 160]], offshore: [[225, 345]] },
+      { name: "Port Leucate – Plage Sud", type: "Meer", lat: 42.8450, lon: 3.0440, good: [[30, 160]], offshore: [[225, 345]] },
+      { name: "Étang – Les Goûts", type: "Lagune", lat: 42.9040, lon: 3.0120, good: [[280, 360], [0, 20], [100, 170]], offshore: [] },
+      { name: "Étang – La Corrège", type: "Lagune", lat: 42.8580, lon: 3.0330, good: [[280, 360], [0, 20], [100, 170]], offshore: [] }
+    ];
+    const DIRS = ["N", "NNO", "NO", "ONO", "O", "OSO", "SO", "SSO", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+
+    const inRange = (deg, ranges) => ranges.some(([a, b]) => deg >= a && deg <= b);
+    const compass = deg => DIRS[Math.round(deg / 22.5) % 16];
+
+    function rate(spot, kn, deg) {
+      if (spot.offshore.length && inRange(deg, spot.offshore) && kn >= 8) return { cls: "b-bad", text: "Ablandig – Vorsicht" };
+      if (kn < 12) return { cls: "b-weak", text: "Zu schwach" };
+      if (kn > 35) return { cls: "b-bad", text: "Sehr stark" };
+      if (inRange(deg, spot.good)) return { cls: "b-good", text: kn > 28 ? "Gut (kleiner Schirm)" : "Gut" };
+      return { cls: "b-ok", text: "Möglich" };
+    }
+
+    // Pfeil zeigt, wohin der Wind weht (Richtung + 180°).
+    function arrow(deg) {
+      return '<svg class="arrow" viewBox="0 0 40 40" aria-hidden="true"><g transform="rotate(' + ((deg + 180) % 360) +
+        ' 20 20)"><path d="M20 3 L29 22 L22 19 L22 37 L18 37 L18 19 L11 22 Z"/></g></svg>';
+    }
+
+    const map = L.map("map", { scrollWheelZoom: false }).setView([42.895, 3.035], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "© OpenStreetMap"
+    }).addTo(map);
+
+    const markers = SPOTS.map((s, i) => {
+      const m = L.marker([s.lat, s.lon], { title: s.name }).addTo(map);
+      m.on("click", () => select(i));
+      return m;
+    });
+
+    let data = [];
+    let selected = 5;
+
+    async function load() {
+      const status = document.getElementById("status");
+      status.textContent = "Lade Wetterdaten …";
+      const params = new URLSearchParams({
+        latitude: SPOTS.map(s => s.lat).join(","),
+        longitude: SPOTS.map(s => s.lon).join(","),
+        current: "wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m",
+        hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+        wind_speed_unit: "kn",
+        timezone: "Europe/Paris",
+        forecast_days: "2"
+      });
+      try {
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?" + params);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const json = await res.json();
+        data = Array.isArray(json) ? json : [json];
+        render();
+        status.textContent = "Stand: " + new Date().toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+      } catch (e) {
+        status.textContent = "Wetterdaten nicht verfügbar (" + e.message + ").";
+      }
+    }
+
+    function render() {
+      const grid = document.getElementById("spots");
+      grid.innerHTML = "";
+      SPOTS.forEach((s, i) => {
+        const c = data[i] && data[i].current;
+        if (!c) return;
+        const kn = Math.round(c.wind_speed_10m);
+        const deg = c.wind_direction_10m;
+        const r = rate(s, kn, deg);
+        const el = document.createElement("div");
+        el.className = "spot" + (i === selected ? " active" : "");
+        el.innerHTML =
+          "<h3>" + s.name + "</h3><div class='type'>" + s.type + "</div>" +
+          "<div class='wind'>" + arrow(deg) +
+          "<div><div class='kn'>" + kn + " kn</div><div class='meta'>Böen " + Math.round(c.wind_gusts_10m) +
+          " kn · " + compass(deg) + " (" + Math.round(deg) + "°) · " + Math.round(c.temperature_2m) + " °C</div></div></div>" +
+          "<span class='badge " + r.cls + "'>" + r.text + "</span>";
+        el.addEventListener("click", () => select(i));
+        grid.appendChild(el);
+        markers[i].bindPopup("<b>" + s.name + "</b><br>" + kn + " kn " + compass(deg) + "<br>" + r.text);
+      });
+      renderForecast();
+    }
+
+    function renderForecast() {
+      const s = SPOTS[selected];
+      const h = data[selected] && data[selected].hourly;
+      document.getElementById("fc-title").textContent = "Vorhersage: " + s.name;
+      const body = document.getElementById("forecast");
+      body.innerHTML = "";
+      if (!h) return;
+      const now = Date.now() - 3600e3;
+      let rows = 0;
+      for (let i = 0; i < h.time.length && rows < 24; i++) {
+        const t = new Date(h.time[i]);
+        if (t.getTime() < now) continue;
+        rows++;
+        const kn = Math.round(h.wind_speed_10m[i]);
+        const deg = h.wind_direction_10m[i];
+        const r = rate(s, kn, deg);
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + t.toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" }) + "</td>" +
+          "<td>" + kn + " kn</td><td>" + Math.round(h.wind_gusts_10m[i]) + " kn</td>" +
+          "<td>" + arrow(deg) + " " + compass(deg) + "</td>" +
+          "<td><span class='badge " + r.cls + "'>" + r.text + "</span></td>";
+        body.appendChild(tr);
+      }
+    }
+
+    function select(i) {
+      selected = i;
+      if (data.length) render();
+      map.panTo([SPOTS[i].lat, SPOTS[i].lon]);
+    }
+
+    document.getElementById("reload").addEventListener("click", load);
+    load();
+    setInterval(load, 15 * 60 * 1000);
+  </script>
+</body>
+</html>
